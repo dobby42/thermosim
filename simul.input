@@ -1,0 +1,10 @@
+1.5        Temperature
+50000      Number of equilibrium steps/cycles
+50000      Number of production steps/cycles
+50         Frequency for blocking of data and output
+500        Frequency for rescaling velocities
+5          Frequency for checking momemtum drift
+0.0005     Time-step for MD simulation
+2.5        Cutoff radius
+200        Total number of particles
+1.2        Packing Density of box
