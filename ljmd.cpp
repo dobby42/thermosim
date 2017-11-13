@@ -1,5 +1,3 @@
-
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,10 +8,10 @@
 #include <string>
 #define NATOMS  1000 
 
-
 using namespace std;
 
 class Vector {
+	//size definitions and length functions
 	public:
 		double x;
 		double y;
@@ -36,6 +34,7 @@ class Vector {
 
 class Atom 
 {
+	//three vectors for pos/vel/force ->> specifies an atom
 	public:
 		Vector pos;
 		Vector vel;
@@ -51,51 +50,55 @@ class Atom
 };
 
 class BoxData 
+//? parameter definition for the box
 {
 	public:
 		int natoms;			
-		double lenWhole;			
-		double lenHalf;			
-		double vol;				
-		double dens;			
-		double temp;			
-		double press;			
-		double pressav;			
-		double cpress[6];			
-		double pcor;			
+		double lenWhole;		//full length	
+		double lenHalf;			//half box length
+		double vol;				//volume of the box
+		double dens;			//density
+		double temp;			//temperature of box
+		double press;			//pressure in box
+		double pressav;			//average pressure???
+		double cpress[6];		//critical pressure? but why 6 tems? -- related with the 6 elements in virial pressure def
+		double pcor;			//pressure correction??
 };
 
 class SimData
+//sinulation parameters defined
 {
 	public:
-		int    ID;              
-		double Tstar;			
-		long   cyc_eq;			
-		long   cyc_pr;			
-		long   blockc;			
-		long   blockd;			
-		long   drift;			
-		double rCut;				
-		double rCutSqr;				
-		double dt;				
+		int    ID;              //simulation id?
+		double Tstar;			//T* = kBT/Є
+		long   cyc_eq;			//
+		long   cyc_pr;			//
+		long   blockc;			//
+		long   blockd;			//
+		long   drift;			//
+		double rCut;			//cutoff radius?	
+		double rCutSqr;			//squared of cutoff	?
+		double dt;				//time step
 };
 
 class Energy 
+//types of energies - variables defined
 {
 	public:
-		double total;			
-		double poten;			
-		double kinet;			
-		double kinblock;			
-		double potens;			
-		double totals;			
+		double total;			//talk energy
+		double poten;			//potential energy
+		double kinet;			//kinetic energy
+		double kinblock;		//?
+		double potens;			//?
+		double totals;			//total energy
 };			
 
 class Virial 
+//virial factors?
 {
 	public:
-		double total;
-		double nbond[6];
+		double total;		//
+		double nbond[6];	// related wit hthe boxdata cpress[6]
 };
 
 vector<Atom> atoms;
@@ -134,7 +137,7 @@ int main()
 	sout1= fopen(name1,"w");
 	fclose(sout1);
 	ran_num_float(-5,0,1);	
-	read_sim();			 
+	read_sim();		 
 	init_all();		
 	initial_pos();		  
 	outputXYZ("./iniconfig.xyz");		 
@@ -181,15 +184,18 @@ int main()
 
 void read_sim ()
 {
-	char tt[80];
+	char tt[80]; //for temp storage
 	FILE *input;
-
+	//read exiting files if present
 	if ( NULL == (input=fopen("./simul.input","r")) ) {
 		fprintf(stdout,"input file simul.input does not exist\n");
 		exit(1);
 	}
 	input = fopen("./simul.input","r");
 	sim.ID = 1;
+	//fscanf reads inputs from the screen
+	//format on fscaf  allows to read 1 significant digit after decimal
+	//format on fgets -- pointer/length-to-read/stream-to-read
 	fscanf(input, "%lf", &sim.Tstar);  fgets(tt, 80, input);
 	fscanf(input, "%ld", &sim.cyc_eq); fgets(tt, 80, input);
 	fscanf(input, "%ld", &sim.cyc_pr); fgets(tt, 80, input);
@@ -216,7 +222,7 @@ void init_all ()
 	en.kinet = 0.0;
 	en.kinblock = 0.0;
 	box.vol = (box.natoms)/(box.dens);
-	box.lenWhole = pow(box.vol, 1.0/3);
+	box.lenWhole = pow(box.vol, 1.0/3); //full length = cuberoot of vol
 	box.lenHalf = 0.5*box.lenWhole;
 	sim.rCutSqr = sim.rCut * sim.rCut;
 	box.pcor = (16.0/3.0)*M_PI*box.dens*box.dens*((2.0/3.0)*(pow(sim.rCut,-9.0))-(pow(sim.rCut, -3)));
@@ -233,18 +239,15 @@ void initial_pos()
 				if ((int) atoms.size() == box.natoms) {
 					return;
 				} 
-				double x = (xIdx + 0.5) * boxLen / numPerDim;
+				double x = (xIdx + 0.5) * boxLen / numPerDim; //why add 0.5?
 				double y = (yIdx + 0.5) * boxLen / numPerDim;
 				double z = (zIdx + 0.5) * boxLen / numPerDim;
 				Atom a (x, y, z);
-				atoms.push_back(a);
+				atoms.push_back(a); //build in functio nto push another value onto vector set
 			}
 		}
-
-
 	}
 }
-
 
 void initial_vel() {
 	double sumvx = 0;
@@ -275,9 +278,8 @@ void initial_vel() {
 		vel.y *= sqrt(3*sim.Tstar/sumvSqr);
 		vel.z *= sqrt(3*sim.Tstar/sumvSqr);
 	}
-
-
 }
+
 void forces () {
 	double enonbond  = 0.0;
 	double enonbonds = 0.0;
@@ -373,6 +375,7 @@ void forces () {
 }
 
 void integrate () {
+	//get all the velocities fom force results and positions
 	double dt = sim.dt;
 
 	for(unsigned int i=0; i<atoms.size(); i++) {
@@ -385,11 +388,13 @@ void integrate () {
 		a.pos.y += dt * a.vel.y;
 		a.pos.z += dt * a.vel.z;
 
-
 	}
 }
 
 void output () {
+	//store in file:  iterations, temp, av_pres, tmep
+	//? should we not tbe storing the time evolution of the system?
+	//what is turn?
 	FILE *sout;FILE *sout1; char name[50]; char name1[50];
 	sprintf(name,"./simul.out");
 	sout = fopen(name,"a");
@@ -410,13 +415,13 @@ void output () {
 
 	sprintf(name1,"./ener.out");
 	sout1= fopen(name1,"a");
-	fprintf(sout1,"%d\t%lf\t%lf\t%lf\n",turn,en.kinet,en.poten,en.total);
+	fprintf(sout1,"%d\t%lf\t%lf\t%lf\n",turn,en.kinet,en.poten,en.total); //store KE PE E_T in a different file
 	fclose (sout1);
 	fclose(sout);
 	box.pressav = 0.0;
 }
 
-void kinet () {
+void kinet () {//get total KE and temperature from there
 	en.kinet = 0.0;
 	for (unsigned int i=0; i<atoms.size(); i++) {
 		Atom &a = atoms[i];
@@ -426,6 +431,7 @@ void kinet () {
 }
 
 void enforcePBC () {
+	//this function moves the atoms that have exited the left wall back in from the right wall and so on
 	double boxLen = box.lenWhole;
 	double boxLenHalf = box.lenHalf;
 	double pbcx,pbcy,pbcz;
@@ -506,10 +512,12 @@ void pressure() {
 #define EPS 0.0
 #define RNMX 1.0
 
+//random number on the gaussian distro from ones on the normal distr. 
+//implemented here is the  polar form of the Box-Muller transformation
 double gauss(double sigma) {
 	double ran1,ran2,ransq,v;
 	do {
-		ran1=2.0*ran_num_float(1,0,1)-1.0;
+		ran1=2.0*ran_num_float(1,0,1)-1.0; 
 		ran2=2.0*ran_num_float(1,0,1)-1.0;
 		ransq=ran1*ran1+ran2*ran2;
 	} while(ransq >= 1.0);
@@ -517,7 +525,6 @@ double gauss(double sigma) {
 	v=sqrt(sigma)*ran1*sqrt(-2.0*log(ransq)/ransq);
 	return v;
 }
-
 
 // Function to generate floating point random numbers.
 
