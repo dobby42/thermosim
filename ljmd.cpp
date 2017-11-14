@@ -44,6 +44,7 @@ class Atom
 			vel = Vector(0, 0, 0);
 			force = Vector(0, 0, 0);
 		}
+		// Kinetic energy for an atom given by .5*v^2
 		double KE() {
 			return .5 * vel.lenSqr();
 		}
@@ -76,8 +77,8 @@ class SimData
 		long   blockc;			//
 		long   blockd;			//
 		long   drift;			//
-		double rCut;			//cutoff radius?	
-		double rCutSqr;			//squared of cutoff	?
+		double rCut;			//cutoff radius	
+		double rCutSqr;			//squared of cutoff	
 		double dt;				//time step
 };
 
@@ -98,7 +99,7 @@ class Virial
 {
 	public:
 		double total;		//
-		double nbond[6];	// related wit hthe boxdata cpress[6]
+		double nbond[6];	// related with the boxdata cpress[6]
 };
 
 vector<Atom> atoms;
@@ -196,7 +197,7 @@ void read_sim ()
 	//fscanf reads inputs from the screen
 	//format on fscaf  allows to read 1 significant digit after decimal
 	//format on fgets -- pointer/length-to-read/stream-to-read
-	fscanf(input, "%lf", &sim.Tstar);  fgets(tt, 80, input);
+	fscanf(input, "%lf", &sim.Tstar);  fgets(tt, 80, input); 
 	fscanf(input, "%ld", &sim.cyc_eq); fgets(tt, 80, input);
 	fscanf(input, "%ld", &sim.cyc_pr); fgets(tt, 80, input);
 	fscanf(input, "%ld", &sim.blockd); fgets(tt, 80, input);
@@ -213,7 +214,7 @@ void read_sim ()
 
 void init_all ()
 {
-
+	// initialize all of the system variables
 	box.temp = 0.0; 
 	box.press = 0.0;
 	box.pressav = 0.0;
@@ -243,13 +244,14 @@ void initial_pos()
 				double y = (yIdx + 0.5) * boxLen / numPerDim;
 				double z = (zIdx + 0.5) * boxLen / numPerDim;
 				Atom a (x, y, z);
-				atoms.push_back(a); //build in functio nto push another value onto vector set
+				atoms.push_back(a); //built in function to push another value onto vector set
 			}
 		}
 	}
 }
 
 void initial_vel() {
+	// assigns an initial value to each atom based on a Gaussian distribution of velocities
 	double sumvx = 0;
 	double sumvy = 0;
 	double sumvz = 0;
@@ -392,8 +394,8 @@ void integrate () {
 }
 
 void output () {
-	//store in file:  iterations, temp, av_pres, tmep
-	//? should we not tbe storing the time evolution of the system?
+	//store in file "simul.out":  iterations, temp, av_pres, tmep
+	//? should we not be storing the time evolution of the system?
 	//what is turn?
 	FILE *sout;FILE *sout1; char name[50]; char name1[50];
 	sprintf(name,"./simul.out");
@@ -425,9 +427,9 @@ void kinet () {//get total KE and temperature from there
 	en.kinet = 0.0;
 	for (unsigned int i=0; i<atoms.size(); i++) {
 		Atom &a = atoms[i];
-		en.kinet += a.KE();
+		en.kinet += a.KE(); // en.kinet is the total kinetic energy of all atoms
 	}
-	box.temp = 2.0*en.kinet/(3.0*atoms.size());
+	box.temp = 2.0*en.kinet/(3.0*atoms.size()); // T = (2/3)*KE_average, KE_average = KE_total/(# of atoms)
 }
 
 void enforcePBC () {
@@ -485,6 +487,7 @@ void velscale() {
 }
 
 void pressure() {
+	// calculates pressure
 	box.press = box.dens * box.temp + pvir.total/box.vol + box.pcor;
 	box.pressav += (box.press);
 	box.cpress[0] = box.dens * box.temp + pvir.nbond[0]/box.vol+ box.pcor;
