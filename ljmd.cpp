@@ -549,21 +549,21 @@ void add_atom() {
 	atoms.push_back(a);
 };
 
-double poten_dif() {
+//double poten_dif() {
 
-	// obtains a value for potential difference, u1 - u0 by adding an atom at a random position, calculating potential energy in the box,
-	// and subtracting the potential energy when the atom is removed again.
-	add_atom(); // add the random atom
-	forces(); // calculate forces
-	double u1 = box.dummy_u; // get potential energy with extra atom
-	atoms.pop_back(); // built in function to remove the last item in a vector, here out randomly placed atom
-	forces(); // recalculate forces
-	double u0 = box.dummy_u; // get potential energy without extra atom
-	double delta_u = u1 - u0; // take the difference in potential energy
-	//fprintf(stdout,"%f,%f,%f ",u1,u0,delta_u);
+//	// obtains a value for potential difference, u1 - u0 by adding an atom at a random position, calculating potential energy in the box,
+//	// and subtracting the potential energy when the atom is removed again.
+//	add_atom(); // add the random atom
+//	forces(); // calculate forces
+//	double u1 = box.dummy_u; // get potential energy with extra atom
+//	atoms.pop_back(); // built in function to remove the last item in a vector, here out randomly placed atom
+//	forces(); // recalculate forces
+//	double u0 = box.dummy_u; // get potential energy without extra atom
+//	double delta_u = u1 - u0; // take the difference in potential energy
+//	//fprintf(stdout,"%f,%f,%f ",u1,u0,delta_u);
 
-	return delta_u;
-};
+//	return delta_u;
+//};
 
 
 
