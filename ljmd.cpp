@@ -51,19 +51,21 @@ class Atom
 };
 
 class BoxData 
-//? parameter definition for the box
+// parameter definition for the box
 {
 	public:
-		int natoms;			
+		int natoms;				// number of atoms in box
 		double lenWhole;		//full length	
 		double lenHalf;			//half box length
 		double vol;				//volume of the box
 		double dens;			//density
 		double temp;			//temperature of box
 		double press;			//pressure in box
-		double pressav;			//average pressure???
+		double pressav;			//average pressure
 		double cpress[6];		//critical pressure? but why 6 tems? -- related with the 6 elements in virial pressure def
-		double pcor;			//pressure correction??
+		double pcor;			//pressure correction factor, arrise from the fact that atoms outside the cutoff radius contribute to pressure
+		//double dummy_u; 		// potential energy variable
+		//double delta_u;
 };
 
 class SimData
@@ -72,11 +74,11 @@ class SimData
 	public:
 		int    ID;              //simulation id?
 		double Tstar;			//T* = kBT/Є
-		long   cyc_eq;			//
-		long   cyc_pr;			//
-		long   blockc;			//
-		long   blockd;			//
-		long   drift;			//
+		long   cyc_eq;			//number of equilibrium cycles
+		long   cyc_pr;			//number of production steps/ cycles
+		long   blockc;			//frequency for rescaling velocities
+		long   blockd;			//frequency for blocking of data and output, i.e. time step between averaging and outputting data
+		long   drift;			//frequency for checking momentum drift
 		double rCut;			//cutoff radius	
 		double rCutSqr;			//squared of cutoff	
 		double dt;				//time step
@@ -95,7 +97,7 @@ class Energy
 };			
 
 class Virial 
-//virial factors?
+//virial coefficients for pressure equation, P = rho x kB x T* x (1 + B1 x rho + B2 x rho^2 + . . .)
 {
 	public:
 		double total;		//
@@ -108,6 +110,7 @@ Energy en;
 SimData sim;
 BoxData box;
 
+// declare functions that will be needed
 void init_all();		
 void read_sim();		
 void write_config();	
@@ -122,6 +125,11 @@ void outputXYZ(string fn);
 void velscale();
 void pressure();
 
+// added code
+void add_atom();
+double poten_dif();
+
+// declare random number generating functions
 int  ran_num_int(int,int);
 double  gauss(double);
 double  ran_num_float(long ,int ,int);
@@ -155,7 +163,13 @@ int main()
 			fprintf(stdout,"Equilibration Completed\n");	
 		}
 		forces(); 		
-		pressure();		
+		pressure();	
+
+		// get potential energy here before the simulation integrates
+		// should be a single function that uses other already defined functions
+		//double delta_u = poten_dif();
+		//box.delta_u += delta_u;	
+
 		integrate();	
 		kinet();			
 		en.kinblock += en.kinet;		
@@ -195,7 +209,7 @@ void read_sim ()
 	input = fopen("./simul.input","r");
 	sim.ID = 1;
 	//fscanf reads inputs from the screen
-	//format on fscaf  allows to read 1 significant digit after decimal
+	//format on fscanf  allows to read 1 significant digit after decimal
 	//format on fgets -- pointer/length-to-read/stream-to-read
 	fscanf(input, "%lf", &sim.Tstar);  fgets(tt, 80, input); 
 	fscanf(input, "%ld", &sim.cyc_eq); fgets(tt, 80, input);
@@ -226,7 +240,10 @@ void init_all ()
 	box.lenWhole = pow(box.vol, 1.0/3); //full length = cuberoot of vol
 	box.lenHalf = 0.5*box.lenWhole;
 	sim.rCutSqr = sim.rCut * sim.rCut;
-	box.pcor = (16.0/3.0)*M_PI*box.dens*box.dens*((2.0/3.0)*(pow(sim.rCut,-9.0))-(pow(sim.rCut, -3)));
+	box.pcor = (16.0/3.0)*M_PI*box.dens*box.dens*((2.0/3.0)*(pow(sim.rCut,-9.0))-(pow(sim.rCut, -3))); // pressure correction factor,
+	// accounts for pressure resulting from particles outside the cutoff radius
+
+	//box.delta_u = 0;
 }
 
 void initial_pos()
@@ -234,47 +251,57 @@ void initial_pos()
 	int numPerDim = ceil(pow(box.natoms, 1.0/3));
 	double boxLen = box.lenWhole;
 
+	// loops over all occupied positions in a 3-D lattice
+	// loop stops when the length of the vector atoms.size is the same as the preset box.natoms
 	for (int xIdx=0; xIdx<numPerDim; xIdx++) {
 		for (int yIdx=0; yIdx<numPerDim; yIdx++) {
 			for (int zIdx=0; zIdx<numPerDim; zIdx++) {
 				if ((int) atoms.size() == box.natoms) {
 					return;
 				} 
-				double x = (xIdx + 0.5) * boxLen / numPerDim; //why add 0.5?
+				// assigns x, y, and z values for atoms based on the iterative index and the box size
+				double x = (xIdx + 0.5) * boxLen / numPerDim; //why add 0.5? -> places all of the atoms on one side of the box
 				double y = (yIdx + 0.5) * boxLen / numPerDim;
 				double z = (zIdx + 0.5) * boxLen / numPerDim;
 				Atom a (x, y, z);
-				atoms.push_back(a); //built in function to push another value onto vector set
+				atoms.push_back(a); // built in function to push another value onto vector set
 			}
 		}
 	}
 }
 
 void initial_vel() {
-	// assigns an initial value to each atom based on a Gaussian distribution of velocities
+	// assigns an initial value to each atom based on a Gaussian distribution of velocities,
+	// then normalizes the velocities by subtracting the average, calculates an average kinetic energy in the box from that
+	// and then normalizes the velocities based on the average kinetic energy and T*.
+	// This ensures that the velocities are normally distributed, and are based on the input temperature.
 	double sumvx = 0;
 	double sumvy = 0;
 	double sumvz = 0;
 	double sumvSqr = 0;
 	for (unsigned int i=0; i<atoms.size(); i++) {
-		Vector &vel = atoms[i].vel;
+		// iterates over total number of atoms, assigning each a velocity based on gaussian distribution
+		Vector &vel = atoms[i].vel; // vel now references the velocity vector we created from each atom[i]
 		vel.x = gauss(sim.Tstar);
 		vel.y = gauss(sim.Tstar); 
 		vel.z = gauss(sim.Tstar); 
+		// running total velocity in each direction is calculated
 		sumvx += vel.x;
 		sumvy += vel.y;
 		sumvz += vel.z;
 	}
 	for (unsigned int i=0; i<atoms.size(); i++) {
+		// again iterating over all atoms in the box, average velocity in each direction is subtracted from the velocity of each atom
 		Vector &vel = atoms[i].vel;
-		vel.x -= sumvx/atoms.size();
+		vel.x -= sumvx/atoms.size(); // total velocity in x direction/ number of atoms = average x-dir velocity
 		vel.y -= sumvy/atoms.size();
 		vel.z -= sumvz/atoms.size();
-		sumvSqr += 2 * atoms[i].KE();
+		sumvSqr += 2 * atoms[i].KE(); // total v^2 = 2 x total kinetic energy, running total based on new normalized velocities
 	}
 
-	sumvSqr = sumvSqr/atoms.size();
+	sumvSqr = sumvSqr/atoms.size(); // average v^2 = total v^2 / num of atoms
 	for (unsigned int i=0; i<atoms.size(); i++) {
+		// once more iterate over all atoms, and reassign velocities based on normalization (3/2 x T* / KE)^1/2
 		Vector &vel = atoms[i].vel;
 		vel.x *= sqrt(3*sim.Tstar/sumvSqr);
 		vel.y *= sqrt(3*sim.Tstar/sumvSqr);
@@ -342,8 +369,8 @@ void forces () {
 			sr6s  = srSqrs * srSqrs * srSqrs;
 			sr12s = sr6s * sr6s;
 
-			force = (24.0*eps/drSqr) * (2.0*sr12 - sr6);
-			enonbond  += 4.0 * eps * (sr12 - sr6);
+			force = (24.0*eps/drSqr) * (2.0*sr12 - sr6); // Lennard-Jones force
+			enonbond  += 4.0 * eps * (sr12 - sr6);	// Lennard-Jones potential
 			enonbonds += 4.0 * eps * (sr12s - sr6s);
 
 			fx = force * dx;
@@ -364,6 +391,7 @@ void forces () {
 			wzz += fz * dz;
 		}
 	}
+	// pvir is the first virial coefficient in P = rho x kB x T x (1 + B1xrho + B2xrho^2 + ....)
 	pvir.nbond[0] = wxx;
 	pvir.nbond[1] = wyx;
 	pvir.nbond[2] = wyy;
@@ -374,10 +402,12 @@ void forces () {
 
 	en.poten = enonbond;
 	en.potens = enonbond-enonbonds;
+
+	//box.dummy_u = enonbond;
 }
 
 void integrate () {
-	//get all the velocities fom force results and positions
+	//get all the velocities from force results and positions
 	double dt = sim.dt;
 
 	for(unsigned int i=0; i<atoms.size(); i++) {
@@ -400,7 +430,7 @@ void output () {
 	FILE *sout;FILE *sout1; char name[50]; char name1[50];
 	sprintf(name,"./simul.out");
 	sout = fopen(name,"a");
-	box.pressav /= sim.blockd;
+	box.pressav /= sim.blockd; 
 	fprintf(stdout,"%d iterations completed, pressure = %lf, temperature = %lf \n",turn, box.pressav, box.temp);
 	fprintf(sout,"%d\t%lf\t%lf\n",turn,box.temp,box.press);
 	//fprintf(sout," Cycle / Time step:             %12ld    %12.4f \n",turn,tt);
@@ -411,16 +441,18 @@ void output () {
 	//fprintf(sout," Pressure (atomic/molecular):   %12.4f \n",box.press);
 	//fprintf(sout," Press.(xx,yy,zz):              %12.4f  %12.4f  %12.4f \n",box.cpress[0],box.cpress[2],box.cpress[5]);
 	//fprintf(sout," Press.(xy,xz,yz):              %12.4f  %12.4f  %12.4f \n",box.cpress[1],box.cpress[3],box.cpress[4]);
-	//fprintf(sout," Potential Energy:              %12.4f \n",en.poten);
+	//fprintf(stdout," Potential Energy:              %12.4f \n",en.poten);
 	//fprintf(sout," Kinetic Energy:                %12.4f \n",en.kinet);
 	//fprintf(sout," Total Energy:                  %12.4f \n",en.total);
+
+	//fprintf(stdout, "potential difference = %lf", box.delta_u); // test pot dif
 
 	sprintf(name1,"./ener.out");
 	sout1= fopen(name1,"a");
 	fprintf(sout1,"%d\t%lf\t%lf\t%lf\n",turn,en.kinet,en.poten,en.total); //store KE PE E_T in a different file
 	fclose (sout1);
 	fclose(sout);
-	box.pressav = 0.0;
+	box.pressav = 0.0; // resets average pressure
 }
 
 void kinet () {//get total KE and temperature from there
@@ -476,19 +508,20 @@ void outputXYZ (string fn) {
 }
 
 void velscale() {
-	en.kinblock /= (sim.blockc*box.natoms);
+	// scales the velocities back to a gaussian distribution based on T* and kinetic energies
+	en.kinblock /= (sim.blockc*box.natoms); // averages kinetic energy
 	for (unsigned int i=0; i<atoms.size(); i++) {
 		Atom &a = atoms[i];
 		a.vel.x *= sqrt(3*sim.Tstar/(2*en.kinblock));
 		a.vel.y *= sqrt(3*sim.Tstar/(2*en.kinblock));
 		a.vel.z *= sqrt(3*sim.Tstar/(2*en.kinblock));
 	}
-	en.kinblock = 0.0;
+	en.kinblock = 0.0; // resets kinetic energy counter to zero
 }
 
 void pressure() {
 	// calculates pressure
-	box.press = box.dens * box.temp + pvir.total/box.vol + box.pcor;
+	box.press = box.dens * box.temp + pvir.total/box.vol + box.pcor; // P* = rho* x T* + B1/V* + correction factor
 	box.pressav += (box.press);
 	box.cpress[0] = box.dens * box.temp + pvir.nbond[0]/box.vol+ box.pcor;
 	box.cpress[1] = box.dens * box.temp + pvir.nbond[1]/box.vol+ box.pcor;
@@ -497,6 +530,42 @@ void pressure() {
 	box.cpress[4] = box.dens * box.temp + pvir.nbond[4]/box.vol+ box.pcor;
 	box.cpress[5] = box.dens * box.temp + pvir.nbond[5]/box.vol+ box.pcor;
 }
+
+// new function to add atom to the box with ranodom position and no velocity
+void add_atom() {
+
+	int numPerDim = ceil(pow(box.natoms, 1.0/3)); // defines number of lattice sites occupied, not sure about this line
+	double boxLen = box.lenWhole;
+	// Get a random position for the new atom.  We will assume that the probability of placing it directly on an existing atom is very small,
+	// and for computational times' sake will not check that this is true.
+	double xran = ran_num_int(0,numPerDim);
+	double yran = ran_num_int(0,numPerDim);
+	double zran = ran_num_int(0,numPerDim);
+	double xpos = (xran + 0.5) * boxLen / numPerDim; //why add 0.5? -> places all of the atoms on one side of the box
+	double ypos = (yran + 0.5) * boxLen / numPerDim;
+	double zpos = (zran + 0.5) * boxLen / numPerDim;
+
+	Atom a(xpos, ypos, zpos);
+	atoms.push_back(a);
+};
+
+double poten_dif() {
+
+	// obtains a value for potential difference, u1 - u0 by adding an atom at a random position, calculating potential energy in the box,
+	// and subtracting the potential energy when the atom is removed again.
+	add_atom(); // add the random atom
+	forces(); // calculate forces
+	double u1 = box.dummy_u; // get potential energy with extra atom
+	atoms.pop_back(); // built in function to remove the last item in a vector, here out randomly placed atom
+	forces(); // recalculate forces
+	double u0 = box.dummy_u; // get potential energy without extra atom
+	double delta_u = u1 - u0; // take the difference in potential energy
+	//fprintf(stdout,"%f,%f,%f ",u1,u0,delta_u);
+
+	return delta_u;
+};
+
+
 
 /* ##### Random number generator code ####### */
 
