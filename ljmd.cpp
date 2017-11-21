@@ -64,8 +64,7 @@ class BoxData
 		double pressav;			//average pressure
 		double cpress[6];		//critical pressure? but why 6 tems? -- related with the 6 elements in virial pressure def
 		double pcor;			//pressure correction factor, arrise from the fact that atoms outside the cutoff radius contribute to pressure
-		//double dummy_u; 		// potential energy variable
-		//double delta_u;
+		double delta_u;			//potential energy difference created by adding one particle to random position in box with no velocity
 };
 
 class SimData
@@ -166,9 +165,11 @@ int main()
 		pressure();	
 
 		// get potential energy here before the simulation integrates
-		// should be a single function that uses other already defined functions
-		//double delta_u = poten_dif();
-		//box.delta_u += delta_u;	
+		// we only want to run this part when the system has equilibrated
+		if (turn>sim.cyc_eq) {
+			double delta_u = poten_dif();
+			box.delta_u = delta_u;	
+		}	
 
 		integrate();	
 		kinet();			
@@ -327,6 +328,7 @@ void forces () {
 	double srSqrs, sr6s, sr12s, force;
 	
 	for (unsigned int i=0; i<atoms.size(); i++) {
+		// reinitialize all forces to 0
 		Vector &force = atoms[i].force; //using a reference here instead of a pointer.  Acts like a pointer, but syntax is like a normal object.
 		force.x = 0;
 		force.y = 0;
@@ -402,8 +404,6 @@ void forces () {
 
 	en.poten = enonbond;
 	en.potens = enonbond-enonbonds;
-
-	//box.dummy_u = enonbond;
 }
 
 void integrate () {
@@ -432,7 +432,7 @@ void output () {
 	sout = fopen(name,"a");
 	box.pressav /= sim.blockd; 
 	fprintf(stdout,"%d iterations completed, pressure = %lf, temperature = %lf \n",turn, box.pressav, box.temp);
-	fprintf(sout,"%d\t%lf\t%lf\n",turn,box.temp,box.press);
+	fprintf(sout,"%d\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\t%lf\n",turn,box.temp,box.press,en.poten,en.kinet,en.total,box.dens,box.delta_u);
 	//fprintf(sout," Cycle / Time step:             %12ld    %12.4f \n",turn,tt);
 	//fprintf(sout," Temperature:                   %12.2f \n",box.temp);
 	//fprintf(sout," Density:                       %12.4f \n",box.dens);
@@ -445,7 +445,7 @@ void output () {
 	//fprintf(sout," Kinetic Energy:                %12.4f \n",en.kinet);
 	//fprintf(sout," Total Energy:                  %12.4f \n",en.total);
 
-	//fprintf(stdout, "potential difference = %lf", box.delta_u); // test pot dif
+	fprintf(stdout, "potential difference = %lf \n", box.delta_u); // test pot dif
 
 	sprintf(name1,"./ener.out");
 	sout1= fopen(name1,"a");
@@ -541,7 +541,7 @@ void add_atom() {
 	double xran = ran_num_int(0,numPerDim);
 	double yran = ran_num_int(0,numPerDim);
 	double zran = ran_num_int(0,numPerDim);
-	double xpos = (xran + 0.5) * boxLen / numPerDim; //why add 0.5? -> places all of the atoms on one side of the box
+	double xpos = (xran + 0.5) * boxLen / numPerDim;
 	double ypos = (yran + 0.5) * boxLen / numPerDim;
 	double zpos = (zran + 0.5) * boxLen / numPerDim;
 
@@ -549,21 +549,21 @@ void add_atom() {
 	atoms.push_back(a);
 };
 
-//double poten_dif() {
+double poten_dif() {
 
-//	// obtains a value for potential difference, u1 - u0 by adding an atom at a random position, calculating potential energy in the box,
-//	// and subtracting the potential energy when the atom is removed again.
-//	add_atom(); // add the random atom
-//	forces(); // calculate forces
-//	double u1 = box.dummy_u; // get potential energy with extra atom
-//	atoms.pop_back(); // built in function to remove the last item in a vector, here out randomly placed atom
-//	forces(); // recalculate forces
-//	double u0 = box.dummy_u; // get potential energy without extra atom
-//	double delta_u = u1 - u0; // take the difference in potential energy
-//	//fprintf(stdout,"%f,%f,%f ",u1,u0,delta_u);
+	// obtains a value for potential difference, u1 - u0 by adding an atom at a random position, calculating potential energy in the box,
+	// and subtracting the potential energy when the atom is removed again.
+	add_atom(); // add the random atom
+	forces(); // calculate forces
+	double u1 = en.poten; // get potential energy with extra atom
+	atoms.pop_back(); // built in function to remove the last item in a vector, here the randomly placed atom
+	forces(); // recalculate forces
+	double u0 = en.poten; // get potential energy without extra atom
+	double delta_u = u1 - u0; // take the difference in potential energy
+	//fprintf(stdout,"%f,%f,%f \n",u1,u0,delta_u);
 
-//	return delta_u;
-//};
+	return delta_u;
+};
 
 
 
